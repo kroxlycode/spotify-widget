@@ -1,0 +1,77 @@
+{
+  "name": "spotify-widget",
+  "version": "1.0.2",
+  "description": "A desktop Spotify now-playing widget for Windows built with Electron, React, and TypeScript.",
+  "main": "electron-build/main.js",
+  "type": "module",
+  "author": "Kroxly Code <kroxlycode@users.noreply.github.com> (https://github.com/kroxlycode)",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "electron:run": "powershell -NoProfile -Command \"Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; electron .\"",
+    "dev:electron": "npm run build && npm run build:electron && npm run electron:run",
+    "build": "vite build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "start": "npm run build && npm run build:electron && npm run electron:run",
+    "pack": "npm run build && npm run build:electron && electron-builder --dir",
+    "dist": "npm run build && npm run build:electron && electron-builder"
+  },
+  "build": {
+    "appId": "com.yusuf.spotifywidget",
+    "productName": "Spotify Widget",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "files": [
+      "dist/**",
+      "assets/**",
+      "electron/**",
+      "electron-build/**"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kroxlycode",
+        "repo": "spotify-widget"
+      }
+    ],
+    "win": {
+      "requestedExecutionLevel": "asInvoker",
+      "icon": "build/icon-256x-256.ico",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spotify Widget",
+      "installerIcon": "build/icon-256x-256.ico",
+      "uninstallerIcon": "build/icon-256x-256.ico",
+      "installerHeaderIcon": "build/icon-256x-256.ico",
+      "include": "build/installer.nsh"
+    }
+  },
+  "dependencies": {
+    "auto-launch": "^5.0.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.7.3",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.2.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.4.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}
