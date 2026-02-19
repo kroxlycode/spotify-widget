@@ -45,8 +45,10 @@ type SpotifyArtist = {
 
 export type PlaybackStats = {
     recentlyPlayed: Array<{ played_at: string; track: SpotifyTrack }>;
-    topTracks: SpotifyTrack[];
-    topArtists: SpotifyArtist[];
+    topTracksShort: SpotifyTrack[];
+    topTracksMedium: SpotifyTrack[];
+    topArtistsShort: SpotifyArtist[];
+    topArtistsMedium: SpotifyArtist[];
 };
 
 export function base64url(input: Buffer) {
@@ -206,30 +208,40 @@ export async function togglePlayPause(accessToken: string, isPlaying: boolean) {
 }
 
 export async function getPlaybackStats(accessToken: string): Promise<PlaybackStats> {
-    const [recentRes, topTracksRes, topArtistsRes] = await Promise.all([
+    const [recentRes, topTracksShortRes, topTracksMediumRes, topArtistsShortRes, topArtistsMediumRes] = await Promise.all([
         fetch("https://api.spotify.com/v1/me/player/recently-played?limit=50", {
             headers: { Authorization: `Bearer ${accessToken}` }
         }),
         fetch("https://api.spotify.com/v1/me/top/tracks?limit=20&time_range=short_term", {
             headers: { Authorization: `Bearer ${accessToken}` }
         }),
+        fetch("https://api.spotify.com/v1/me/top/tracks?limit=20&time_range=medium_term", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        }),
         fetch("https://api.spotify.com/v1/me/top/artists?limit=20&time_range=short_term", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        }),
+        fetch("https://api.spotify.com/v1/me/top/artists?limit=20&time_range=medium_term", {
             headers: { Authorization: `Bearer ${accessToken}` }
         })
     ]);
 
-    if (!recentRes.ok || !topTracksRes.ok || !topArtistsRes.ok) {
+    if (!recentRes.ok || !topTracksShortRes.ok || !topTracksMediumRes.ok || !topArtistsShortRes.ok || !topArtistsMediumRes.ok) {
         throw new Error("İstatistik verileri alınamadı.");
     }
 
     const recentJson: any = await recentRes.json();
-    const topTracksJson: any = await topTracksRes.json();
-    const topArtistsJson: any = await topArtistsRes.json();
+    const topTracksShortJson: any = await topTracksShortRes.json();
+    const topTracksMediumJson: any = await topTracksMediumRes.json();
+    const topArtistsShortJson: any = await topArtistsShortRes.json();
+    const topArtistsMediumJson: any = await topArtistsMediumRes.json();
 
     return {
         recentlyPlayed: Array.isArray(recentJson.items) ? recentJson.items : [],
-        topTracks: Array.isArray(topTracksJson.items) ? topTracksJson.items : [],
-        topArtists: Array.isArray(topArtistsJson.items) ? topArtistsJson.items : []
+        topTracksShort: Array.isArray(topTracksShortJson.items) ? topTracksShortJson.items : [],
+        topTracksMedium: Array.isArray(topTracksMediumJson.items) ? topTracksMediumJson.items : [],
+        topArtistsShort: Array.isArray(topArtistsShortJson.items) ? topArtistsShortJson.items : [],
+        topArtistsMedium: Array.isArray(topArtistsMediumJson.items) ? topArtistsMediumJson.items : []
     };
 }
 

@@ -2,6 +2,7 @@
 
 contextBridge.exposeInMainWorld("api", {
     getSettings: () => ipcRenderer.invoke("app:getSettings"),
+    getHomeSummary: () => ipcRenderer.invoke("app:getHomeSummary"),
     getVersionInfo: () => ipcRenderer.invoke("app:getVersionInfo"),
     getUpdateState: () => ipcRenderer.invoke("app:getUpdateState"),
     checkForUpdates: () => ipcRenderer.invoke("app:checkForUpdates"),
@@ -10,6 +11,9 @@ contextBridge.exposeInMainWorld("api", {
     openExternal: (url: string) => ipcRenderer.invoke("app:openExternal", url),
     setAutostart: (enabled: boolean) => ipcRenderer.invoke("app:setAutostart", enabled),
     setUpdatePreferences: (prefs: any) => ipcRenderer.invoke("app:setUpdatePreferences", prefs),
+    exportSettings: () => ipcRenderer.invoke("app:exportSettings"),
+    importSettings: () => ipcRenderer.invoke("app:importSettings"),
+    resetSettings: () => ipcRenderer.invoke("app:resetSettings"),
     setWidgetPreferences: (prefs: any) => ipcRenderer.invoke("app:setWidgetPreferences", prefs),
     toggleLyricsWindow: (force?: boolean) => ipcRenderer.invoke("app:toggleLyricsWindow", force),
 
@@ -48,5 +52,11 @@ contextBridge.exposeInMainWorld("api", {
         const handler = (_: any, payload: any) => cb(payload);
         ipcRenderer.on("app:updateState", handler);
         return () => ipcRenderer.removeListener("app:updateState", handler);
+    },
+
+    onSettingsImported: (cb: (payload: any) => void) => {
+        const handler = (_: any, payload: any) => cb(payload);
+        ipcRenderer.on("app:settingsImported", handler);
+        return () => ipcRenderer.removeListener("app:settingsImported", handler);
     }
 });

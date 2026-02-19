@@ -120,27 +120,37 @@ export async function togglePlayPause(accessToken, isPlaying) {
     }
 }
 export async function getPlaybackStats(accessToken) {
-    const [recentRes, topTracksRes, topArtistsRes] = await Promise.all([
+    const [recentRes, topTracksShortRes, topTracksMediumRes, topArtistsShortRes, topArtistsMediumRes] = await Promise.all([
         fetch("https://api.spotify.com/v1/me/player/recently-played?limit=50", {
             headers: { Authorization: `Bearer ${accessToken}` }
         }),
         fetch("https://api.spotify.com/v1/me/top/tracks?limit=20&time_range=short_term", {
             headers: { Authorization: `Bearer ${accessToken}` }
         }),
+        fetch("https://api.spotify.com/v1/me/top/tracks?limit=20&time_range=medium_term", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        }),
         fetch("https://api.spotify.com/v1/me/top/artists?limit=20&time_range=short_term", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        }),
+        fetch("https://api.spotify.com/v1/me/top/artists?limit=20&time_range=medium_term", {
             headers: { Authorization: `Bearer ${accessToken}` }
         })
     ]);
-    if (!recentRes.ok || !topTracksRes.ok || !topArtistsRes.ok) {
+    if (!recentRes.ok || !topTracksShortRes.ok || !topTracksMediumRes.ok || !topArtistsShortRes.ok || !topArtistsMediumRes.ok) {
         throw new Error("İstatistik verileri alınamadı.");
     }
     const recentJson = await recentRes.json();
-    const topTracksJson = await topTracksRes.json();
-    const topArtistsJson = await topArtistsRes.json();
+    const topTracksShortJson = await topTracksShortRes.json();
+    const topTracksMediumJson = await topTracksMediumRes.json();
+    const topArtistsShortJson = await topArtistsShortRes.json();
+    const topArtistsMediumJson = await topArtistsMediumRes.json();
     return {
         recentlyPlayed: Array.isArray(recentJson.items) ? recentJson.items : [],
-        topTracks: Array.isArray(topTracksJson.items) ? topTracksJson.items : [],
-        topArtists: Array.isArray(topArtistsJson.items) ? topArtistsJson.items : []
+        topTracksShort: Array.isArray(topTracksShortJson.items) ? topTracksShortJson.items : [],
+        topTracksMedium: Array.isArray(topTracksMediumJson.items) ? topTracksMediumJson.items : [],
+        topArtistsShort: Array.isArray(topArtistsShortJson.items) ? topArtistsShortJson.items : [],
+        topArtistsMedium: Array.isArray(topArtistsMediumJson.items) ? topArtistsMediumJson.items : []
     };
 }
 export async function getLyrics(track, artist, durationMs) {

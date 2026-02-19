@@ -37,12 +37,15 @@ const iconBtn: React.CSSProperties = {
   cursor: "pointer"
 };
 
+const imageCache = new Map<string, string>();
+
 export default function NowPlayingWidget() {
   const [now, setNow] = useState<any>(null);
   const [prefs, setPrefs] = useState<WidgetPreferences>(defaultPrefs);
   const [isChanging, setIsChanging] = useState(false);
   const [progressMs, setProgressMs] = useState(0);
   const [hovered, setHovered] = useState(false);
+  const [cachedImg, setCachedImg] = useState<string>("");
   const lastTrackIdRef = useRef<string>("");
 
   useEffect(() => {
@@ -92,6 +95,27 @@ export default function NowPlayingWidget() {
 
   const item = now?.item;
   const img = item?.album?.images?.[0]?.url;
+  useEffect(() => {
+    const src = String(img || "");
+    if (!src) {
+      setCachedImg("");
+      return;
+    }
+    if (imageCache.has(src)) {
+      setCachedImg(src);
+      return;
+    }
+    const pre = new Image();
+    pre.onload = () => {
+      imageCache.set(src, src);
+      if (imageCache.size > 120) {
+        const first = imageCache.keys().next().value;
+        if (first) imageCache.delete(first);
+      }
+      setCachedImg(src);
+    };
+    pre.src = src;
+  }, [img]);
   const durationMs = Number(item?.duration_ms || 0);
   const currentMs = Math.min(progressMs, durationMs || progressMs);
   const remainingMs = Math.max(0, durationMs - currentMs);
@@ -135,8 +159,8 @@ export default function NowPlayingWidget() {
 
   const style1 = (
     <div style={{ display: "flex", gap: scale.gap, alignItems: "center", ...transitionStyle }}>
-      {img ? (
-        <img src={img} width={scale.cover} height={scale.cover} style={{ borderRadius: 14, objectFit: "cover", flexShrink: 0 }} />
+      {cachedImg ? (
+        <img src={cachedImg} width={scale.cover} height={scale.cover} style={{ borderRadius: 14, objectFit: "cover", flexShrink: 0 }} />
       ) : (
         <div style={{ width: scale.cover, height: scale.cover, borderRadius: 14, background: "rgba(255,255,255,0.1)", flexShrink: 0 }} />
       )}
@@ -154,8 +178,8 @@ export default function NowPlayingWidget() {
   const style2 = (
     <div style={{ display: "flex", alignItems: "center", gap: scale.gap, ...transitionStyle }}>
       <div style={{ width: 6, alignSelf: "stretch", borderRadius: 999, background: "linear-gradient(180deg, #1db954, #0f5132)" }} />
-      {img ? (
-        <img src={img} width={Math.max(50, scale.cover - 6)} height={Math.max(50, scale.cover - 6)} style={{ borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)" }} />
+      {cachedImg ? (
+        <img src={cachedImg} width={Math.max(50, scale.cover - 6)} height={Math.max(50, scale.cover - 6)} style={{ borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.15)" }} />
       ) : (
         <div style={{ width: Math.max(50, scale.cover - 6), height: Math.max(50, scale.cover - 6), borderRadius: "50%", background: "rgba(255,255,255,0.12)" }} />
       )}

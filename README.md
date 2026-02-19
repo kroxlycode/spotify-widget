@@ -57,14 +57,14 @@ npm run build:electron
 1. Go to the GitHub Releases page:
    - `https://github.com/kroxlycode/spotify-widget/releases`
 2. Download the latest installer:
-   - `Spotify Widget-Setup-x.x.x.exe`
+   - `Spotify-Widget-Setup-x.x.x.exe`
 3. Run the installer and complete setup.
 4. Launch the app and connect your Spotify account from the **Connect** page.
 
 ## First Release Workflow
 
 1. Ensure installer exists:
-   - `dist/Spotify Widget-Setup-1.0.2.exe`
+   - `dist/Spotify-Widget-Setup-1.0.2.exe`
 2. Commit and tag:
    - `git add .`
    - `git commit -m "chore: initial public release v1.0.2"`
@@ -74,7 +74,7 @@ npm run build:electron
    - `git push origin v1.0.2`
 4. Create a GitHub Release with tag `v1.0.2`.
 5. Upload installer asset:
-   - `dist/Spotify Widget-Setup-1.0.2.exe`
+   - `dist/Spotify-Widget-Setup-1.0.2.exe`
 
 ## License
 

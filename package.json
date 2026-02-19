@@ -1,6 +1,6 @@
 {
   "name": "spotify-widget",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A desktop Spotify now-playing widget for Windows built with Electron, React, and TypeScript.",
   "main": "electron-build/main.js",
   "type": "module",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.kroxly.spotifywidget",
-    "productName": "Spotify Widget",
+    "productName": "Spotify-Widget",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "files": [
       "dist/**",
@@ -46,7 +46,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Spotify Widget",
+      "shortcutName": "Spotify-Widget",
       "installerIcon": "build/icon-256x-256.ico",
       "uninstallerIcon": "build/icon-256x-256.ico",
       "installerHeaderIcon": "build/icon-256x-256.ico",

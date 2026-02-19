@@ -4,9 +4,12 @@ type UpdateState = {
   status: "idle" | "checking" | "available" | "not-available" | "downloading" | "downloaded" | "error";
   message?: string;
   version?: string;
+  releaseNotesUrl?: string;
   percent?: number;
   transferred?: number;
   total?: number;
+  bytesPerSecond?: number;
+  etaSeconds?: number;
 };
 
 function formatBytes(v?: number) {
@@ -19,6 +22,14 @@ function formatBytes(v?: number) {
     i += 1;
   }
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatEta(sec?: number) {
+  if (!sec || sec <= 0) return "-";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s} sn`;
+  return `${m} dk ${s} sn`;
 }
 
 export default function Version() {
@@ -86,6 +97,7 @@ export default function Version() {
     const total = formatBytes(state.total);
     return `${p.toFixed(1)}% (${left} / ${total})`;
   }, [state.percent, state.total, state.transferred]);
+  const speedText = useMemo(() => `${formatBytes(state.bytesPerSecond)}/sn`, [state.bytesPerSecond]);
 
   const disabled = busy || state.status === "checking" || state.status === "downloading";
 
@@ -122,6 +134,16 @@ export default function Version() {
             <button onClick={runPrimaryAction} disabled={disabled} style={{ borderRadius: 10, border: "1px solid #1db954", background: "#123721", color: "#bbf7d0", padding: "8px 12px", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.7 : 1 }}>
               {primaryLabel}
             </button>
+            {!!state.releaseNotesUrl && (
+              <button onClick={() => (window as any).api?.openExternal?.(state.releaseNotesUrl)} style={{ borderRadius: 10, border: "1px solid #304139", background: "#171f1b", color: "#d1d5db", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
+                Yeni Sürüm Notlarını Gör
+              </button>
+            )}
+            {state.status === "error" && (
+              <button onClick={runPrimaryAction} style={{ borderRadius: 10, border: "1px solid #7f1d1d", background: "#3b1212", color: "#fecaca", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
+                Tekrar Dene
+              </button>
+            )}
           </div>
         </section>
       </div>
@@ -133,6 +155,7 @@ export default function Version() {
           <div style={{ width: "min(480px, 92vw)", borderRadius: 16, border: "1px solid #31443a", background: "#111a15", padding: 16 }}>
             <div style={{ fontWeight: 800, fontSize: 18, color: "#f3f4f6" }}>Güncelleme indiriliyor</div>
             <div style={{ marginTop: 8, color: "#a7b3ad" }}>{progressText}</div>
+            <div style={{ marginTop: 4, color: "#9ca3af", fontSize: 13 }}>Hız: {speedText} | Kalan: {formatEta(state.etaSeconds)}</div>
             <div style={{ marginTop: 12, height: 10, borderRadius: 999, background: "#1c2722", overflow: "hidden" }}>
               <div style={{ width: `${Math.max(0, Math.min(100, Number(state.percent || 0)))}%`, height: "100%", background: "linear-gradient(90deg, #1db954, #86efac)" }} />
             </div>

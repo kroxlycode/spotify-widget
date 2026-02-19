@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, ipcMain, shell, Menu, Tray, screen, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Menu, Tray, screen, nativeImage, dialog } from "electron";
 import type { Request, Response } from "express";
 import { execFile } from "child_process";
 import path from "path";
@@ -40,9 +40,12 @@ type UpdateState = {
     status: UpdateStatus;
     message?: string;
     version?: string;
+    releaseNotesUrl?: string;
     percent?: number;
     transferred?: number;
     total?: number;
+    bytesPerSecond?: number;
+    etaSeconds?: number;
 };
 
 type UpdatePreferences = {
@@ -81,7 +84,7 @@ const store = new Store<StoreSchema>();
 const { autoUpdater } = updaterPkg as any;
 
 const defaultConfig: AppConfig = {
-    appName: "Spotify Widget",
+    appName: "Spotify-Widget",
     appIcon: "build/icon-256x256.ico",
     trayIcon: "build/icon-64x64.ico",
     appUserModelId: "com.spotify.widget",
@@ -150,6 +153,9 @@ let fullscreenTimer: NodeJS.Timeout | null = null;
 let lastNowPlaying: NowPlaying | null = null;
 let lastLyricsTrackKey = "";
 let currentLyrics: string | null = null;
+let lyricsLoading = false;
+let lyricsFetchToken = 0;
+const lyricsCache = new Map<string, string | null>();
 let updateState: UpdateState = { status: "idle" };
 let pollingActive = false;
 let pollBackoffLevel = 0;
@@ -182,8 +188,20 @@ function logDiagnostic(scope: string, message: string, data?: unknown) {
     try {
         const logDir = path.join(app.getPath("userData"), "logs");
         fs.mkdirSync(logDir, { recursive: true });
+        const logPath = path.join(logDir, "main.log");
+        if (fs.existsSync(logPath)) {
+            const size = fs.statSync(logPath).size;
+            if (size > 1_500_000) {
+                const rotated = path.join(logDir, `main-${Date.now()}.log`);
+                fs.renameSync(logPath, rotated);
+                const files = fs.readdirSync(logDir).filter((n) => n.startsWith("main-")).sort().reverse();
+                for (const old of files.slice(5)) {
+                    fs.rmSync(path.join(logDir, old), { force: true });
+                }
+            }
+        }
         const line = `[${new Date().toISOString()}] [${scope}] ${message}${data ? ` ${JSON.stringify(data)}` : ""}\n`;
-        fs.appendFileSync(path.join(logDir, "main.log"), line, "utf8");
+        fs.appendFileSync(logPath, line, "utf8");
     } catch {
         // ignore logging failures
     }
@@ -297,6 +315,7 @@ function emitWidgetPreferences() {
 function emitLyrics() {
     lyricsWindow?.webContents.send("lyrics:update", {
         lyrics: currentLyrics,
+        loading: lyricsLoading,
         nowPlaying: lastNowPlaying
     });
 }
@@ -331,9 +350,11 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("update-available", (info: any) => {
+        const ver = String((info as any)?.version || "");
         emitUpdateState({
             status: "available",
-            version: String((info as any)?.version || ""),
+            version: ver,
+            releaseNotesUrl: ver ? `https://github.com/${appConfig.githubUsername || "kroxlycode"}/${appConfig.githubRepo || "spotify-widget"}/releases/tag/v${ver}` : undefined,
             message: "Yeni sürüm bulundu."
         });
     });
@@ -348,11 +369,18 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("download-progress", (progressObj: any) => {
+        const bytesPerSecond = Number(progressObj.bytesPerSecond || 0);
+        const total = Number(progressObj.total || 0);
+        const transferred = Number(progressObj.transferred || 0);
+        const remaining = Math.max(0, total - transferred);
+        const etaSeconds = bytesPerSecond > 0 ? Math.round(remaining / bytesPerSecond) : undefined;
         emitUpdateState({
             status: "downloading",
             percent: Number(progressObj.percent || 0),
-            transferred: Number(progressObj.transferred || 0),
-            total: Number(progressObj.total || 0),
+            transferred,
+            total,
+            bytesPerSecond,
+            etaSeconds,
             message: "Güncelleme indiriliyor..."
         });
     });
@@ -363,6 +391,8 @@ function setupAutoUpdater() {
             status: "downloaded",
             version: String((info as any)?.version || ""),
             percent: 100,
+            bytesPerSecond: 0,
+            etaSeconds: 0,
             message: "Guncelleme indirildi. Yeniden baslatarak kurabilirsiniz."
         });
     });
@@ -724,15 +754,45 @@ async function updateLyricsForNowPlaying(now: NowPlaying | null) {
     const key = `${trackName}__${artistName}`;
     if (!trackName || !artistName) {
         currentLyrics = null;
+        lastLyricsTrackKey = "";
+        lyricsLoading = false;
         emitLyrics();
         return;
     }
-    if (key === lastLyricsTrackKey) return;
+    if (key === lastLyricsTrackKey && currentLyrics !== null) return;
     lastLyricsTrackKey = key;
 
-    const durationMs = Number(now?.item?.duration_ms || 0);
-    currentLyrics = await getLyrics(trackName, artistName, durationMs);
+    if (lyricsCache.has(key)) {
+        currentLyrics = lyricsCache.get(key) ?? null;
+        lyricsLoading = false;
+        emitLyrics();
+        return;
+    }
+
+    const myToken = ++lyricsFetchToken;
+    lyricsLoading = true;
     emitLyrics();
+    const durationMs = Number(now?.item?.duration_ms || 0);
+    const fetched = await getLyrics(trackName, artistName, durationMs);
+    lyricsCache.set(key, fetched ?? null);
+    if (lyricsCache.size > 80) {
+        const first = lyricsCache.keys().next().value;
+        if (first) lyricsCache.delete(first);
+    }
+    if (myToken !== lyricsFetchToken) return;
+    lyricsLoading = false;
+    currentLyrics = fetched;
+    emitLyrics();
+}
+
+function getExportableSettings() {
+    return {
+        autostart: store.get("autostart") ?? false,
+        spotifyClientId: store.get("spotifyClientId") ?? "",
+        widgetPreferences: getWidgetPreferences(),
+        updatePreferences: getUpdatePreferences(),
+        widgetPinned: store.get("widgetPinned") ?? false
+    };
 }
 
 function runForegroundWindowProbe(): Promise<{ x: number; y: number; w: number; h: number; pid: number } | null> {
@@ -805,7 +865,7 @@ async function pollNowPlayingOnce() {
         pollBackoffLevel = 0;
 
         if (store.get("lyricsVisible") || lyricsWindow?.isVisible()) {
-            await updateLyricsForNowPlaying(now);
+            void updateLyricsForNowPlaying(now);
         }
         emitLyrics();
         mainWindow?.webContents.send("spotify:nowPlaying", now);
@@ -921,6 +981,41 @@ ipcMain.handle("app:getSettings", async () => {
     };
 });
 
+ipcMain.handle("app:getHomeSummary", async () => {
+    const hasToken = !!store.get("tokenSet");
+    const connected = hasToken;
+    const now = lastNowPlaying;
+    let dayMinutes = 0;
+    let weekMinutes = 0;
+    if (hasToken) {
+        try {
+            const accessToken = await getValidAccessToken();
+            if (accessToken) {
+                const stats = await getPlaybackStats(accessToken);
+                const nowTs = Date.now();
+                for (const r of stats.recentlyPlayed || []) {
+                    const playedAt = new Date(r.played_at).getTime();
+                    const dur = Number(r.track?.duration_ms || 0);
+                    const diff = nowTs - playedAt;
+                    if (diff <= 24 * 60 * 60 * 1000) dayMinutes += Math.round(dur / (1000 * 60));
+                    if (diff <= 7 * 24 * 60 * 60 * 1000) weekMinutes += Math.round(dur / (1000 * 60));
+                }
+            }
+        } catch (err: any) {
+            logDiagnostic("home", "Summary fetch failed", { error: String(err?.message || err || "unknown") });
+        }
+    }
+
+    return {
+        connected,
+        isPlaying: !!now?.is_playing,
+        currentTrack: now?.item?.name || "",
+        currentArtist: now?.item?.artists?.map((a: any) => a.name).join(", ") || "",
+        dayMinutes,
+        weekMinutes
+    };
+});
+
 ipcMain.handle("app:getVersionInfo", async () => {
     const githubUsername = appConfig.githubUsername || "kroxlycode";
     return {
@@ -982,13 +1077,65 @@ ipcMain.handle("app:setUpdatePreferences", async (_e, prefs: Partial<UpdatePrefe
     return next;
 });
 
+ipcMain.handle("app:exportSettings", async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+        title: "Ayarları Dışa Aktar",
+        defaultPath: "spotify-widget-settings.json",
+        filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+    if (canceled || !filePath) return { ok: false };
+    fs.writeFileSync(filePath, JSON.stringify(getExportableSettings(), null, 2), "utf8");
+    return { ok: true, filePath };
+});
+
+ipcMain.handle("app:importSettings", async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: "Ayarları İçe Aktar",
+        properties: ["openFile"],
+        filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+    if (canceled || filePaths.length === 0) return { ok: false };
+    const raw = fs.readFileSync(filePaths[0], "utf8");
+    const json = JSON.parse(raw) as any;
+    if (typeof json.autostart === "boolean") {
+        store.set("autostart", json.autostart);
+        await ensureAutostartEnabled(json.autostart);
+    }
+    if (typeof json.spotifyClientId === "string") store.set("spotifyClientId", json.spotifyClientId);
+    if (json.widgetPreferences) setWidgetPreferences(json.widgetPreferences);
+    if (json.updatePreferences) {
+        store.set("updatePreferences", {
+            silentCheckOnStartup: !!json.updatePreferences.silentCheckOnStartup
+        });
+    }
+    if (typeof json.widgetPinned === "boolean") {
+        store.set("widgetPinned", json.widgetPinned);
+        widgetWindow?.setMovable(!json.widgetPinned);
+    }
+    mainWindow?.webContents.send("app:settingsImported", getExportableSettings());
+    return { ok: true, filePath: filePaths[0] };
+});
+
+ipcMain.handle("app:resetSettings", async () => {
+    store.set("widgetPreferences", defaultWidgetPreferences);
+    store.set("updatePreferences", defaultUpdatePreferences);
+    store.set("widgetPinned", false);
+    store.set("autostart", false);
+    await ensureAutostartEnabled(false);
+    widgetWindow?.setMovable(true);
+    applyWidgetWindowSizeFromPreferences();
+    emitWidgetPreferences();
+    mainWindow?.webContents.send("app:settingsImported", getExportableSettings());
+    return { ok: true };
+});
+
 ipcMain.handle("app:setWidgetPreferences", async (_e, nextPrefs: Partial<WidgetPreferences>) => {
     return setWidgetPreferences(nextPrefs);
 });
 
 ipcMain.handle("app:toggleLyricsWindow", async (_e, force?: boolean) => {
     toggleLyricsWindow(force);
-    if (store.get("lyricsVisible")) await updateLyricsForNowPlaying(lastNowPlaying);
+    if (store.get("lyricsVisible")) void updateLyricsForNowPlaying(lastNowPlaying);
     return store.get("lyricsVisible") ?? false;
 });
 
@@ -1027,6 +1174,8 @@ ipcMain.handle("spotify:connect", async () => {
 
 ipcMain.handle("spotify:disconnect", async () => {
     store.delete("tokenSet");
+    lyricsLoading = false;
+    currentLyrics = null;
     widgetWindow?.hide();
     lyricsWindow?.hide();
     mainWindow?.webContents.send("spotify:nowPlaying", null);

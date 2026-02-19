@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Home from "./pages/Home";
 import Connect from "./pages/Connect";
 import Settings from "./pages/Settings";
 import Status from "./pages/Status";
@@ -12,16 +13,17 @@ declare global {
   }
 }
 
-type Page = "connect" | "settings" | "status" | "stats" | "version" | "widget";
+type Page = "home" | "connect" | "settings" | "status" | "stats" | "version" | "widget";
 
 function getPageFromHash(): Page {
   const h = (location.hash || "").replace("#/", "");
+  if (h === "connect") return "connect";
   if (h === "settings") return "settings";
   if (h === "status") return "status";
   if (h === "stats") return "stats";
   if (h === "version") return "version";
   if (h === "widget") return "widget";
-  return "connect";
+  return "home";
 }
 
 export default function App() {
@@ -36,20 +38,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
+    const t = setTimeout(() => setLoading(false), 500);
     return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
     document.body.style.margin = "0";
     document.body.style.fontFamily = "'Plus Jakarta Sans', 'Segoe UI', sans-serif";
-
     if (page === "widget") {
       document.body.style.background = "transparent";
       document.body.style.color = "#e5e7eb";
       return;
     }
-
     document.body.style.background = "#0b0f0d";
     document.body.style.color = "#e5e7eb";
   }, [page]);
@@ -69,7 +69,15 @@ export default function App() {
     return (
       <button
         onClick={() => (location.hash = `#/${target}`)}
-        style={{ border: active ? "1px solid #1ed760" : "1px solid #26312c", borderRadius: 12, padding: "10px 14px", fontWeight: 700, cursor: "pointer", background: active ? "#163021" : "#151a18", color: active ? "#d1fae5" : "#d1d5db" }}
+        style={{
+          border: active ? "1px solid #1ed760" : "1px solid #26312c",
+          borderRadius: 12,
+          padding: "10px 14px",
+          fontWeight: 700,
+          cursor: "pointer",
+          background: active ? "#163021" : "#151a18",
+          color: active ? "#d1fae5" : "#d1d5db"
+        }}
       >
         {label}
       </button>
@@ -104,6 +112,7 @@ export default function App() {
         </header>
 
         <section style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", background: "#0f1613", border: "1px solid #1d2823", borderRadius: 14, padding: 10 }}>
+          {navButton("home", "Ana Sayfa")}
           {navButton("connect", "Bağlantı")}
           {navButton("status", "Durum")}
           {navButton("stats", "İstatistik")}
@@ -112,6 +121,7 @@ export default function App() {
         </section>
 
         <main style={{ minHeight: 420 }}>
+          {page === "home" && <Home />}
           {page === "connect" && <Connect />}
           {page === "status" && <Status />}
           {page === "stats" && <Stats />}
@@ -120,7 +130,7 @@ export default function App() {
         </main>
 
         <footer style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #1f2a24", color: "#8ea097", fontSize: 12, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <span>Spotify Widget v1.0.4</span>
+          <span>Spotify Widget v1.0.5</span>
           <span>Dev by Kroxly</span>
         </footer>
       </div>

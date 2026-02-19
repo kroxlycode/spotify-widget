@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("api", {
     getSettings: () => ipcRenderer.invoke("app:getSettings"),
+    getHomeSummary: () => ipcRenderer.invoke("app:getHomeSummary"),
     getVersionInfo: () => ipcRenderer.invoke("app:getVersionInfo"),
     getUpdateState: () => ipcRenderer.invoke("app:getUpdateState"),
     checkForUpdates: () => ipcRenderer.invoke("app:checkForUpdates"),
@@ -9,6 +10,9 @@ contextBridge.exposeInMainWorld("api", {
     openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
     setAutostart: (enabled) => ipcRenderer.invoke("app:setAutostart", enabled),
     setUpdatePreferences: (prefs) => ipcRenderer.invoke("app:setUpdatePreferences", prefs),
+    exportSettings: () => ipcRenderer.invoke("app:exportSettings"),
+    importSettings: () => ipcRenderer.invoke("app:importSettings"),
+    resetSettings: () => ipcRenderer.invoke("app:resetSettings"),
     setWidgetPreferences: (prefs) => ipcRenderer.invoke("app:setWidgetPreferences", prefs),
     toggleLyricsWindow: (force) => ipcRenderer.invoke("app:toggleLyricsWindow", force),
     setSpotifyClientId: (clientId) => ipcRenderer.invoke("spotify:setClientId", clientId),
@@ -41,5 +45,10 @@ contextBridge.exposeInMainWorld("api", {
         const handler = (_, payload) => cb(payload);
         ipcRenderer.on("app:updateState", handler);
         return () => ipcRenderer.removeListener("app:updateState", handler);
+    },
+    onSettingsImported: (cb) => {
+        const handler = (_, payload) => cb(payload);
+        ipcRenderer.on("app:settingsImported", handler);
+        return () => ipcRenderer.removeListener("app:settingsImported", handler);
     }
 });

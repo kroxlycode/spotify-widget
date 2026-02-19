@@ -50,6 +50,15 @@ export default function Settings() {
       setPrefs({ ...defaultPrefs, ...(s.widgetPreferences || {}) });
       setUpdatePrefs({ ...defaultUpdatePrefs, ...(s.updatePreferences || {}) });
     });
+
+    const off = api.onSettingsImported?.((s: any) => {
+      setAutostart(!!s?.autostart);
+      setPrefs({ ...defaultPrefs, ...(s?.widgetPreferences || {}) });
+      setUpdatePrefs({ ...defaultUpdatePrefs, ...(s?.updatePreferences || {}) });
+      setSaved("Ayarlar yenilendi.");
+      setTimeout(() => setSaved(""), 1200);
+    });
+    return () => off?.();
   }, []);
 
   const toggleAutostart = async () => {
@@ -78,6 +87,30 @@ export default function Settings() {
     setUpdatePrefs((prev) => ({ ...prev, silentCheckOnStartup: next }));
     await api.setUpdatePreferences?.({ silentCheckOnStartup: next });
     setSaved(next ? "Sessiz güncelleme denetimi: Açık" : "Sessiz güncelleme denetimi: Kapalı");
+    setTimeout(() => setSaved(""), 1200);
+  };
+
+  const exportSettings = async () => {
+    const api = (window as any).api;
+    if (!api) return;
+    const r = await api.exportSettings?.();
+    if (r?.ok) setSaved("Ayarlar dışa aktarıldı.");
+    setTimeout(() => setSaved(""), 1200);
+  };
+
+  const importSettings = async () => {
+    const api = (window as any).api;
+    if (!api) return;
+    const r = await api.importSettings?.();
+    if (r?.ok) setSaved("Ayarlar içe aktarıldı.");
+    setTimeout(() => setSaved(""), 1200);
+  };
+
+  const resetSettings = async () => {
+    const api = (window as any).api;
+    if (!api) return;
+    await api.resetSettings?.();
+    setSaved("Ayarlar varsayılana sıfırlandı.");
     setTimeout(() => setSaved(""), 1200);
   };
 
@@ -117,6 +150,15 @@ export default function Settings() {
             <button onClick={() => updateWidgetPrefs({ showProgress: !prefs.showProgress })} style={chipButton(prefs.showProgress)}>{prefs.showProgress ? "İlerleme: Açık" : "İlerleme: Kapalı"}</button>
             <button onClick={() => updateWidgetPrefs({ hideOnFullscreen: !prefs.hideOnFullscreen })} style={chipButton(prefs.hideOnFullscreen)}>{prefs.hideOnFullscreen ? "Tam Ekranda Gizle: Açık" : "Tam Ekranda Gizle: Kapalı"}</button>
             <button onClick={updateSilentCheck} style={chipButton(updatePrefs.silentCheckOnStartup)}>{updatePrefs.silentCheckOnStartup ? "Açılışta Sessiz Güncelleme: Açık" : "Açılışta Sessiz Güncelleme: Kapalı"}</button>
+          </div>
+        </section>
+
+        <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
+          <div style={{ fontWeight: 800, color: "#f3f4f6" }}>Ayar Yönetimi</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button onClick={exportSettings} style={chipButton(false)}>JSON Dışa Aktar</button>
+            <button onClick={importSettings} style={chipButton(false)}>JSON İçe Aktar</button>
+            <button onClick={resetSettings} style={chipButton(false)}>Varsayılana Sıfırla</button>
           </div>
         </section>
       </div>
