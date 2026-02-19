@@ -77,7 +77,7 @@ export default function Settings() {
     const next = !updatePrefs.silentCheckOnStartup;
     setUpdatePrefs((prev) => ({ ...prev, silentCheckOnStartup: next }));
     await api.setUpdatePreferences?.({ silentCheckOnStartup: next });
-    setSaved(next ? "Sessiz guncelleme denetimi: Acik" : "Sessiz guncelleme denetimi: Kapali");
+    setSaved(next ? "Sessiz güncelleme denetimi: Açık" : "Sessiz güncelleme denetimi: Kapalı");
     setTimeout(() => setSaved(""), 1200);
   };
 
@@ -116,7 +116,7 @@ export default function Settings() {
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button onClick={() => updateWidgetPrefs({ showProgress: !prefs.showProgress })} style={chipButton(prefs.showProgress)}>{prefs.showProgress ? "İlerleme: Açık" : "İlerleme: Kapalı"}</button>
             <button onClick={() => updateWidgetPrefs({ hideOnFullscreen: !prefs.hideOnFullscreen })} style={chipButton(prefs.hideOnFullscreen)}>{prefs.hideOnFullscreen ? "Tam Ekranda Gizle: Açık" : "Tam Ekranda Gizle: Kapalı"}</button>
-            <button onClick={updateSilentCheck} style={chipButton(updatePrefs.silentCheckOnStartup)}>{updatePrefs.silentCheckOnStartup ? "Acilista Sessiz Guncelleme: Acik" : "Acilista Sessiz Guncelleme: Kapali"}</button>
+            <button onClick={updateSilentCheck} style={chipButton(updatePrefs.silentCheckOnStartup)}>{updatePrefs.silentCheckOnStartup ? "Açılışta Sessiz Güncelleme: Açık" : "Açılışta Sessiz Güncelleme: Kapalı"}</button>
           </div>
         </section>
       </div>

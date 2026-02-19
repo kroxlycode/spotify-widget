@@ -1,6 +1,6 @@
 {
   "name": "spotify-widget",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A desktop Spotify now-playing widget for Windows built with Electron, React, and TypeScript.",
   "main": "electron-build/main.js",
   "type": "module",
@@ -17,7 +17,7 @@
     "dist": "npm run build && npm run build:electron && electron-builder"
   },
   "build": {
-    "appId": "com.yusuf.spotifywidget",
+    "appId": "com.kroxly.spotifywidget",
     "productName": "Spotify Widget",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "files": [
