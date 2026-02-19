@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("api", {
     installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
     openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
     setAutostart: (enabled) => ipcRenderer.invoke("app:setAutostart", enabled),
+    setUpdatePreferences: (prefs) => ipcRenderer.invoke("app:setUpdatePreferences", prefs),
     setWidgetPreferences: (prefs) => ipcRenderer.invoke("app:setWidgetPreferences", prefs),
     toggleLyricsWindow: (force) => ipcRenderer.invoke("app:toggleLyricsWindow", force),
     setSpotifyClientId: (clientId) => ipcRenderer.invoke("spotify:setClientId", clientId),

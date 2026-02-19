@@ -10,11 +10,19 @@ type WidgetPreferences = {
   hideOnFullscreen: boolean;
 };
 
+type UpdatePreferences = {
+  silentCheckOnStartup: boolean;
+};
+
 const defaultPrefs: WidgetPreferences = {
   sizePreset: "medium",
   showProgress: true,
   stylePreset: "style1",
   hideOnFullscreen: true
+};
+
+const defaultUpdatePrefs: UpdatePreferences = {
+  silentCheckOnStartup: true
 };
 
 const chipButton = (active: boolean): React.CSSProperties => ({
@@ -31,6 +39,7 @@ export default function Settings() {
   const [autostart, setAutostart] = useState(false);
   const [saved, setSaved] = useState("");
   const [prefs, setPrefs] = useState<WidgetPreferences>(defaultPrefs);
+  const [updatePrefs, setUpdatePrefs] = useState<UpdatePreferences>(defaultUpdatePrefs);
 
   useEffect(() => {
     const api = (window as any).api;
@@ -39,6 +48,7 @@ export default function Settings() {
     api.getSettings().then((s: any) => {
       setAutostart(!!s.autostart);
       setPrefs({ ...defaultPrefs, ...(s.widgetPreferences || {}) });
+      setUpdatePrefs({ ...defaultUpdatePrefs, ...(s.updatePreferences || {}) });
     });
   }, []);
 
@@ -52,12 +62,22 @@ export default function Settings() {
     setTimeout(() => setSaved(""), 1200);
   };
 
-  const updatePrefs = async (next: Partial<WidgetPreferences>) => {
+  const updateWidgetPrefs = async (next: Partial<WidgetPreferences>) => {
     const api = (window as any).api;
     if (!api) return;
     setPrefs((prev) => ({ ...prev, ...next }));
     await api.setWidgetPreferences(next);
     setSaved("Widget ayarları güncellendi.");
+    setTimeout(() => setSaved(""), 1200);
+  };
+
+  const updateSilentCheck = async () => {
+    const api = (window as any).api;
+    if (!api) return;
+    const next = !updatePrefs.silentCheckOnStartup;
+    setUpdatePrefs((prev) => ({ ...prev, silentCheckOnStartup: next }));
+    await api.setUpdatePreferences?.({ silentCheckOnStartup: next });
+    setSaved(next ? "Sessiz guncelleme denetimi: Acik" : "Sessiz guncelleme denetimi: Kapali");
     setTimeout(() => setSaved(""), 1200);
   };
 
@@ -77,25 +97,26 @@ export default function Settings() {
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
           <div style={{ fontWeight: 800, color: "#f3f4f6" }}>Widget boyutu</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button onClick={() => updatePrefs({ sizePreset: "small" })} style={chipButton(prefs.sizePreset === "small")}>Küçük</button>
-            <button onClick={() => updatePrefs({ sizePreset: "medium" })} style={chipButton(prefs.sizePreset === "medium")}>Orta</button>
-            <button onClick={() => updatePrefs({ sizePreset: "large" })} style={chipButton(prefs.sizePreset === "large")}>Büyük</button>
+            <button onClick={() => updateWidgetPrefs({ sizePreset: "small" })} style={chipButton(prefs.sizePreset === "small")}>Küçük</button>
+            <button onClick={() => updateWidgetPrefs({ sizePreset: "medium" })} style={chipButton(prefs.sizePreset === "medium")}>Orta</button>
+            <button onClick={() => updateWidgetPrefs({ sizePreset: "large" })} style={chipButton(prefs.sizePreset === "large")}>Büyük</button>
           </div>
         </section>
 
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
           <div style={{ fontWeight: 800, color: "#f3f4f6" }}>Widget stil teması</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button onClick={() => updatePrefs({ stylePreset: "style1" })} style={chipButton(prefs.stylePreset === "style1")}>Stil 1</button>
-            <button onClick={() => updatePrefs({ stylePreset: "style2" })} style={chipButton(prefs.stylePreset === "style2")}>Stil 2</button>
+            <button onClick={() => updateWidgetPrefs({ stylePreset: "style1" })} style={chipButton(prefs.stylePreset === "style1")}>Stil 1</button>
+            <button onClick={() => updateWidgetPrefs({ stylePreset: "style2" })} style={chipButton(prefs.stylePreset === "style2")}>Stil 2</button>
           </div>
         </section>
 
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
           <div style={{ fontWeight: 800, color: "#f3f4f6" }}>Ek seçenekler</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button onClick={() => updatePrefs({ showProgress: !prefs.showProgress })} style={chipButton(prefs.showProgress)}>{prefs.showProgress ? "İlerleme: Açık" : "İlerleme: Kapalı"}</button>
-            <button onClick={() => updatePrefs({ hideOnFullscreen: !prefs.hideOnFullscreen })} style={chipButton(prefs.hideOnFullscreen)}>{prefs.hideOnFullscreen ? "Tam Ekranda Gizle: Açık" : "Tam Ekranda Gizle: Kapalı"}</button>
+            <button onClick={() => updateWidgetPrefs({ showProgress: !prefs.showProgress })} style={chipButton(prefs.showProgress)}>{prefs.showProgress ? "İlerleme: Açık" : "İlerleme: Kapalı"}</button>
+            <button onClick={() => updateWidgetPrefs({ hideOnFullscreen: !prefs.hideOnFullscreen })} style={chipButton(prefs.hideOnFullscreen)}>{prefs.hideOnFullscreen ? "Tam Ekranda Gizle: Açık" : "Tam Ekranda Gizle: Kapalı"}</button>
+            <button onClick={updateSilentCheck} style={chipButton(updatePrefs.silentCheckOnStartup)}>{updatePrefs.silentCheckOnStartup ? "Acilista Sessiz Guncelleme: Acik" : "Acilista Sessiz Guncelleme: Kapali"}</button>
           </div>
         </section>
       </div>

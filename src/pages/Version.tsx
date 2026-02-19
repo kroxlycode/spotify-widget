@@ -50,41 +50,33 @@ export default function Version() {
     return () => off?.();
   }, []);
 
-  const checkUpdates = async () => {
+  const primaryLabel = useMemo(() => {
+    if (state.status === "checking") return "Denetleniyor...";
+    if (state.status === "available") return "Guncellemeyi Indir";
+    if (state.status === "downloading") return "Indiriliyor...";
+    if (state.status === "downloaded") return "Yeniden Baslat ve Guncelle";
+    return "Guncellemeleri Denetle";
+  }, [state.status]);
+
+  const runPrimaryAction = async () => {
     const api = (window as any).api;
     if (!api) return;
-    setBusy(true);
     setMsg("");
+
     try {
-      await api.checkForUpdates();
+      if (state.status === "available") {
+        setBusy(true);
+        await api.downloadUpdate();
+      } else if (state.status === "downloaded") {
+        await api.installUpdate();
+      } else if (state.status !== "downloading" && state.status !== "checking") {
+        setBusy(true);
+        await api.checkForUpdates();
+      }
     } catch (e: any) {
-      setMsg(e?.message || "Güncelleme denetlenemedi.");
+      setMsg(e?.message || "Guncelleme islemi basarisiz.");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const downloadUpdate = async () => {
-    const api = (window as any).api;
-    if (!api) return;
-    setBusy(true);
-    setMsg("");
-    try {
-      await api.downloadUpdate();
-    } catch (e: any) {
-      setMsg(e?.message || "Güncelleme indirilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const installUpdate = async () => {
-    const api = (window as any).api;
-    if (!api) return;
-    try {
-      await api.installUpdate();
-    } catch (e: any) {
-      setMsg(e?.message || "Kurulum başlatılamadı.");
     }
   };
 
@@ -95,22 +87,24 @@ export default function Version() {
     return `${p.toFixed(1)}% (${left} / ${total})`;
   }, [state.percent, state.total, state.transferred]);
 
+  const disabled = busy || state.status === "checking" || state.status === "downloading";
+
   return (
     <div style={{ maxWidth: 840 }}>
       <div style={{ borderRadius: 18, padding: 18, background: "linear-gradient(145deg, #0f1c15, #15241c)", color: "#f8fafc", boxShadow: "0 14px 34px rgba(0, 0, 0, 0.35)", border: "1px solid #274034" }}>
-        <div style={{ fontSize: 24, fontWeight: 800 }}>Sürüm</div>
-        <div style={{ marginTop: 6, color: "#a7b3ad" }}>Uygulama sürümü ve güncelleme yönetimi.</div>
+        <div style={{ fontSize: 24, fontWeight: 800 }}>Surum</div>
+        <div style={{ marginTop: 6, color: "#a7b3ad" }}>Uygulama surumu ve guncelleme yonetimi.</div>
       </div>
 
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
           <div style={{ color: "#9ca3af" }}>Uygulama</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#f3f4f6", marginTop: 4 }}>{appName}</div>
-          <div style={{ color: "#86efac", marginTop: 6, fontWeight: 700 }}>Sürüm: v{version}</div>
+          <div style={{ color: "#86efac", marginTop: 6, fontWeight: 700 }}>Surum: v{version}</div>
         </section>
 
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
-          <div style={{ color: "#9ca3af" }}>Geliştirici</div>
+          <div style={{ color: "#9ca3af" }}>Gelistirici</div>
           <button
             onClick={() => (window as any).api?.openExternal?.(githubUrl)}
             style={{ marginTop: 8, borderRadius: 10, border: "1px solid #2e3d35", background: "#171f1b", color: "#d1fae5", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}
@@ -120,26 +114,14 @@ export default function Version() {
         </section>
 
         <section style={{ border: "1px solid #26312c", borderRadius: 14, background: "#121916", padding: 14 }}>
-          <div style={{ color: "#9ca3af" }}>Güncelleme</div>
-          <div style={{ marginTop: 8, color: "#d1d5db" }}>{state.message || "Hazır."}</div>
-          {state.version && <div style={{ marginTop: 6, color: "#86efac", fontWeight: 700 }}>Yeni sürüm: v{state.version}</div>}
+          <div style={{ color: "#9ca3af" }}>Guncelleme</div>
+          <div style={{ marginTop: 8, color: "#d1d5db" }}>{state.message || "Hazir."}</div>
+          {state.version && <div style={{ marginTop: 6, color: "#86efac", fontWeight: 700 }}>Yeni surum: v{state.version}</div>}
 
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <button onClick={checkUpdates} disabled={busy || state.status === "checking"} style={{ borderRadius: 10, border: "1px solid #304139", background: "#171f1b", color: "#d1d5db", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
-              Güncellemeleri Denetle
+            <button onClick={runPrimaryAction} disabled={disabled} style={{ borderRadius: 10, border: "1px solid #1db954", background: "#123721", color: "#bbf7d0", padding: "8px 12px", fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.7 : 1 }}>
+              {primaryLabel}
             </button>
-
-            {state.status === "available" && (
-              <button onClick={downloadUpdate} disabled={busy} style={{ borderRadius: 10, border: "1px solid #1db954", background: "#123721", color: "#bbf7d0", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
-                Güncellemeyi İndir
-              </button>
-            )}
-
-            {state.status === "downloaded" && (
-              <button onClick={installUpdate} style={{ borderRadius: 10, border: "1px solid #1db954", background: "#1db954", color: "#052e16", padding: "8px 12px", fontWeight: 800, cursor: "pointer" }}>
-                Güncellemeyi Kur ve Yeniden Başlat
-              </button>
-            )}
           </div>
         </section>
       </div>
@@ -149,7 +131,7 @@ export default function Version() {
       {state.status === "downloading" && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "grid", placeItems: "center", zIndex: 999 }}>
           <div style={{ width: "min(480px, 92vw)", borderRadius: 16, border: "1px solid #31443a", background: "#111a15", padding: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "#f3f4f6" }}>Güncelleme İndiriliyor</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "#f3f4f6" }}>Guncelleme indiriliyor</div>
             <div style={{ marginTop: 8, color: "#a7b3ad" }}>{progressText}</div>
             <div style={{ marginTop: 12, height: 10, borderRadius: 999, background: "#1c2722", overflow: "hidden" }}>
               <div style={{ width: `${Math.max(0, Math.min(100, Number(state.percent || 0)))}%`, height: "100%", background: "linear-gradient(90deg, #1db954, #86efac)" }} />

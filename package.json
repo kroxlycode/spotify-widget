@@ -1,6 +1,6 @@
 {
   "name": "spotify-widget",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A desktop Spotify now-playing widget for Windows built with Electron, React, and TypeScript.",
   "main": "electron-build/main.js",
   "type": "module",

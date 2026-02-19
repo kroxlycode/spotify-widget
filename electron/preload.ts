@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("api", {
     installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
     openExternal: (url: string) => ipcRenderer.invoke("app:openExternal", url),
     setAutostart: (enabled: boolean) => ipcRenderer.invoke("app:setAutostart", enabled),
+    setUpdatePreferences: (prefs: any) => ipcRenderer.invoke("app:setUpdatePreferences", prefs),
     setWidgetPreferences: (prefs: any) => ipcRenderer.invoke("app:setWidgetPreferences", prefs),
     toggleLyricsWindow: (force?: boolean) => ipcRenderer.invoke("app:toggleLyricsWindow", force),
 

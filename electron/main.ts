@@ -45,6 +45,10 @@ type UpdateState = {
     total?: number;
 };
 
+type UpdatePreferences = {
+    silentCheckOnStartup: boolean;
+};
+
 type WidgetSizePreset = "small" | "medium" | "large";
 type WidgetStylePreset = "style1" | "style2";
 
@@ -70,6 +74,7 @@ type StoreSchema = {
     lyricsBoundsByDisplay?: Record<string, WidgetPosition>;
     widgetPreferences?: WidgetPreferences;
     lyricsVisible?: boolean;
+    updatePreferences?: UpdatePreferences;
 };
 
 const store = new Store<StoreSchema>();
@@ -146,6 +151,21 @@ let lastNowPlaying: NowPlaying | null = null;
 let lastLyricsTrackKey = "";
 let currentLyrics: string | null = null;
 let updateState: UpdateState = { status: "idle" };
+let pollingActive = false;
+let pollBackoffLevel = 0;
+let silentUpdateCheck = false;
+let lastTokenRefreshStatus: "idle" | "ok" | "error" = "idle";
+let lastTokenRefreshAt = 0;
+let lastTokenRefreshError = "";
+
+const defaultUpdatePreferences: UpdatePreferences = {
+    silentCheckOnStartup: true
+};
+
+const POLL_MS_PLAYING = 3500;
+const POLL_MS_IDLE = 12000;
+const POLL_MS_ERROR_BASE = 6000;
+const POLL_MS_ERROR_MAX = 60000;
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) app.quit();
@@ -157,6 +177,24 @@ const autoLauncher = new AutoLaunch({
 
 const preloadPath = path.join(app.getAppPath(), "electron", "preload.cjs");
 app.setPath("sessionData", path.join(app.getPath("temp"), "spotify-widget-session"));
+
+function logDiagnostic(scope: string, message: string, data?: unknown) {
+    try {
+        const logDir = path.join(app.getPath("userData"), "logs");
+        fs.mkdirSync(logDir, { recursive: true });
+        const line = `[${new Date().toISOString()}] [${scope}] ${message}${data ? ` ${JSON.stringify(data)}` : ""}\n`;
+        fs.appendFileSync(path.join(logDir, "main.log"), line, "utf8");
+    } catch {
+        // ignore logging failures
+    }
+}
+
+function getUpdatePreferences(): UpdatePreferences {
+    const raw = store.get("updatePreferences");
+    return {
+        silentCheckOnStartup: raw?.silentCheckOnStartup ?? defaultUpdatePreferences.silentCheckOnStartup
+    };
+}
 
 function getViteIndexUrl() {
     const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -268,11 +306,27 @@ function emitUpdateState(next?: Partial<UpdateState>) {
     mainWindow?.webContents.send("app:updateState", updateState);
 }
 
+function mapUpdaterError(err: any): string {
+    const msg = String(err?.message || err || "");
+    const lower = msg.toLowerCase();
+    if (lower.includes("enetunreach") || lower.includes("econn") || lower.includes("timeout") || lower.includes("network")) {
+        return "Guncelleme sunucusuna ulasilamadi. Internet baglantinizi kontrol edin.";
+    }
+    if (lower.includes("404") || lower.includes("cannot find latest") || lower.includes("no published versions")) {
+        return "Yayinda uygun bir guncelleme paketi bulunamadi.";
+    }
+    if (lower.includes("signature") || lower.includes("sha512")) {
+        return "Indirilen guncelleme dogrulanamadi. Tekrar deneyin.";
+    }
+    return "Guncelleme islemi sirasinda hata olustu. Lutfen tekrar deneyin.";
+}
+
 function setupAutoUpdater() {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
 
     autoUpdater.on("checking-for-update", () => {
+        if (silentUpdateCheck) return;
         emitUpdateState({ status: "checking", message: "Güncellemeler denetleniyor..." });
     });
 
@@ -285,7 +339,12 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("update-not-available", () => {
-        emitUpdateState({ status: "not-available", message: "Uygulama güncel." });
+        if (silentUpdateCheck) {
+            silentUpdateCheck = false;
+            emitUpdateState({ status: "idle", message: "" });
+            return;
+        }
+        emitUpdateState({ status: "not-available", message: "Uygulama guncel." });
     });
 
     autoUpdater.on("download-progress", (progressObj: any) => {
@@ -299,20 +358,40 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("update-downloaded", (info: any) => {
+        silentUpdateCheck = false;
         emitUpdateState({
             status: "downloaded",
             version: String((info as any)?.version || ""),
             percent: 100,
-            message: "Güncelleme hazır. Kurulum için yeniden başlat."
+            message: "Guncelleme indirildi. Yeniden baslatarak kurabilirsiniz."
         });
     });
 
     autoUpdater.on("error", (err: any) => {
+        const mapped = mapUpdaterError(err);
+        logDiagnostic("updater", mapped, { raw: String(err?.message || err || "") });
+        if (silentUpdateCheck) {
+            silentUpdateCheck = false;
+            emitUpdateState({ status: "idle", message: "" });
+            return;
+        }
         emitUpdateState({
             status: "error",
-            message: err?.message || "Güncelleme sırasında bir hata oluştu."
+            message: mapped
         });
     });
+}
+
+async function checkForUpdatesInternal(silent: boolean) {
+    if (!app.isPackaged) return;
+    silentUpdateCheck = silent;
+    if (!silent) emitUpdateState({ status: "checking", message: "Guncellemeler denetleniyor..." });
+    try {
+        await autoUpdater.checkForUpdates();
+    } catch (err) {
+        if (!silent) throw err;
+        silentUpdateCheck = false;
+    }
 }
 
 function getTrayIcon() {
@@ -394,7 +473,14 @@ function createTray() {
     refreshTrayMenu();
 }
 
-function createMainWindow() {
+function shouldLaunchHidden() {
+    const argv = process.argv.map((a) => String(a).toLowerCase());
+    const hasHiddenArg = argv.includes("--hidden") || argv.includes("--background") || argv.includes("--startup");
+    const wasOpenedAtLogin = process.platform === "win32" ? !!app.getLoginItemSettings().wasOpenedAtLogin : false;
+    return hasHiddenArg || wasOpenedAtLogin;
+}
+
+function createMainWindow(showOnReady = true) {
     mainWindow = new BrowserWindow({
         title: appConfig.appName,
         width: 1000,
@@ -402,6 +488,7 @@ function createMainWindow() {
         minWidth: 900,
         minHeight: 600,
         autoHideMenuBar: true,
+        show: false,
         ...(hasAppIcon ? { icon: appIconPath } : {}),
         webPreferences: {
             preload: preloadPath,
@@ -418,6 +505,9 @@ function createMainWindow() {
     mainWindow.loadURL(getViteIndexUrl());
     mainWindow.setTitle(appConfig.appName);
     mainWindow.setMenuBarVisibility(false);
+    mainWindow.once("ready-to-show", () => {
+        if (showOnReady) mainWindow?.show();
+    });
     mainWindow.on("close", (event) => {
         if (isQuitting) return;
         event.preventDefault();
@@ -594,6 +684,7 @@ async function getValidAccessToken(): Promise<string | null> {
     if (Date.now() < tokenSet.expires_at && tokenSet.access_token) return tokenSet.access_token;
 
     try {
+        logDiagnostic("token", "Refreshing access token");
         const refreshed = await refreshAccessToken({
             clientId,
             refreshToken: tokenSet.refresh_token
@@ -605,8 +696,16 @@ async function getValidAccessToken(): Promise<string | null> {
             expires_at: refreshed.expires_at
         };
         store.set("tokenSet", updated);
+        lastTokenRefreshStatus = "ok";
+        lastTokenRefreshAt = Date.now();
+        lastTokenRefreshError = "";
+        logDiagnostic("token", "Refresh success");
         return updated.access_token;
-    } catch {
+    } catch (err: any) {
+        lastTokenRefreshStatus = "error";
+        lastTokenRefreshAt = Date.now();
+        lastTokenRefreshError = String(err?.message || "unknown");
+        logDiagnostic("token", "Refresh failed", { error: lastTokenRefreshError });
         return null;
     }
 }
@@ -680,56 +779,79 @@ function stopFullscreenWatcher() {
     fullscreenTimer = null;
 }
 
-function startPollingNowPlaying() {
-    if (pollTimer) return;
+function scheduleNextPoll(ms: number) {
+    if (!pollingActive) return;
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => {
+        void pollNowPlayingOnce();
+    }, ms);
+}
 
-    pollTimer = setInterval(async () => {
-        try {
-            const accessToken = await getValidAccessToken();
-            if (!accessToken) {
-                widgetWindow?.hide();
-                mainWindow?.webContents.send("spotify:nowPlaying", null);
-                return;
-            }
-
-            const now = await getNowPlaying(accessToken);
-            lastNowPlaying = now;
-            if (store.get("lyricsVisible") || lyricsWindow?.isVisible()) {
-                await updateLyricsForNowPlaying(now);
-            }
-            emitLyrics();
-
-            mainWindow?.webContents.send("spotify:nowPlaying", now);
-
-            const shouldShow = !!now && now.is_playing && !!now.item;
-            if (shouldShow) {
-                if (!widgetWindow) createWidgetWindow();
-                if (widgetWindow && !widgetWindow.isVisible()) {
-                    const prefs = getWidgetPreferences();
-                    const size = getWidgetWindowSize(prefs.sizePreset);
-                    const pos = getDisplayScopedPosition("widgetBoundsByDisplay", "widgetBounds", size.width, size.height);
-                    widgetWindow.setBounds({ x: pos.x, y: pos.y, width: size.width, height: size.height });
-                }
-                widgetWindow?.webContents.send("spotify:nowPlaying", now);
-                emitWidgetPreferences();
-                widgetWindow?.showInactive();
-                startFullscreenWatcher();
-                maybeShowLyricsWindow();
-            } else {
-                widgetWindow?.hide();
-                lyricsWindow?.hide();
-                stopFullscreenWatcher();
-            }
-        } catch {
+async function pollNowPlayingOnce() {
+    if (!pollingActive) return;
+    let nextMs = POLL_MS_IDLE;
+    try {
+        const accessToken = await getValidAccessToken();
+        if (!accessToken) {
             widgetWindow?.hide();
             mainWindow?.webContents.send("spotify:nowPlaying", null);
-            stopFullscreenWatcher();
+            nextMs = POLL_MS_IDLE;
+            scheduleNextPoll(nextMs);
+            return;
         }
-    }, 5000);
+
+        const now = await getNowPlaying(accessToken);
+        lastNowPlaying = now;
+        pollBackoffLevel = 0;
+
+        if (store.get("lyricsVisible") || lyricsWindow?.isVisible()) {
+            await updateLyricsForNowPlaying(now);
+        }
+        emitLyrics();
+        mainWindow?.webContents.send("spotify:nowPlaying", now);
+
+        const shouldShow = !!now && now.is_playing && !!now.item;
+        if (shouldShow) {
+            if (!widgetWindow) createWidgetWindow();
+            if (widgetWindow && !widgetWindow.isVisible()) {
+                const prefs = getWidgetPreferences();
+                const size = getWidgetWindowSize(prefs.sizePreset);
+                const pos = getDisplayScopedPosition("widgetBoundsByDisplay", "widgetBounds", size.width, size.height);
+                widgetWindow.setBounds({ x: pos.x, y: pos.y, width: size.width, height: size.height });
+            }
+            widgetWindow?.webContents.send("spotify:nowPlaying", now);
+            emitWidgetPreferences();
+            widgetWindow?.showInactive();
+            startFullscreenWatcher();
+            maybeShowLyricsWindow();
+            nextMs = POLL_MS_PLAYING;
+        } else {
+            widgetWindow?.hide();
+            lyricsWindow?.hide();
+            stopFullscreenWatcher();
+            nextMs = POLL_MS_IDLE;
+        }
+    } catch (err: any) {
+        widgetWindow?.hide();
+        mainWindow?.webContents.send("spotify:nowPlaying", null);
+        stopFullscreenWatcher();
+        pollBackoffLevel += 1;
+        nextMs = Math.min(POLL_MS_ERROR_BASE * 2 ** (pollBackoffLevel - 1), POLL_MS_ERROR_MAX);
+        logDiagnostic("poll", "NowPlaying poll failed", { error: String(err?.message || err || "unknown"), backoffMs: nextMs });
+    }
+    scheduleNextPoll(nextMs);
+}
+
+function startPollingNowPlaying() {
+    if (pollingActive) return;
+    pollingActive = true;
+    pollBackoffLevel = 0;
+    void pollNowPlayingOnce();
 }
 
 function stopPollingNowPlaying() {
-    if (pollTimer) clearInterval(pollTimer);
+    pollingActive = false;
+    if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
 }
 
@@ -740,7 +862,8 @@ app.whenReady().then(async () => {
     if (appConfig.appUserModelId) app.setAppUserModelId(appConfig.appUserModelId);
     setupAutoUpdater();
 
-    createMainWindow();
+    const launchHidden = shouldLaunchHidden();
+    createMainWindow(!launchHidden);
     createTray();
 
     screen.on("display-metrics-changed", () => {
@@ -755,6 +878,11 @@ app.whenReady().then(async () => {
     await ensureAutostartEnabled(autostart);
 
     if (store.get("tokenSet")) startPollingNowPlaying();
+    if (getUpdatePreferences().silentCheckOnStartup) {
+        setTimeout(() => {
+            void checkForUpdatesInternal(true);
+        }, 8000);
+    }
 
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -783,7 +911,13 @@ ipcMain.handle("app:getSettings", async () => {
         hasToken: !!store.get("tokenSet"),
         spotifyClientId: store.get("spotifyClientId") ?? "",
         widgetPreferences: getWidgetPreferences(),
-        lyricsVisible: store.get("lyricsVisible") ?? false
+        lyricsVisible: store.get("lyricsVisible") ?? false,
+        updatePreferences: getUpdatePreferences(),
+        diagnostics: {
+            lastTokenRefreshStatus,
+            lastTokenRefreshAt,
+            lastTokenRefreshError
+        }
     };
 });
 
@@ -810,8 +944,7 @@ ipcMain.handle("app:checkForUpdates", async () => {
     if (!app.isPackaged) {
         throw new Error("Güncelleme denetimi yalnızca kurulu (.exe) sürümde çalışır.");
     }
-    emitUpdateState({ status: "checking", message: "Güncellemeler denetleniyor..." });
-    await autoUpdater.checkForUpdates();
+    await checkForUpdatesInternal(false);
     return true;
 });
 
@@ -838,6 +971,15 @@ ipcMain.handle("app:setAutostart", async (_e, enabled: boolean) => {
     store.set("autostart", enabled);
     await ensureAutostartEnabled(enabled);
     return true;
+});
+
+ipcMain.handle("app:setUpdatePreferences", async (_e, prefs: Partial<UpdatePreferences>) => {
+    const current = getUpdatePreferences();
+    const next: UpdatePreferences = {
+        silentCheckOnStartup: prefs.silentCheckOnStartup ?? current.silentCheckOnStartup
+    };
+    store.set("updatePreferences", next);
+    return next;
 });
 
 ipcMain.handle("app:setWidgetPreferences", async (_e, nextPrefs: Partial<WidgetPreferences>) => {
